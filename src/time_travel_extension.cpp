@@ -1,6 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
-#include "quack_extension.hpp"
+#include "time_travel_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -11,12 +11,12 @@
 
 namespace duckdb {
 
-inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+inline void Time_travelScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &name_vector = args.data[0];
     UnaryExecutor::Execute<string_t, string_t>(
 	    name_vector, result, args.size(),
 	    [&](string_t name) { 
-			return StringVector::AddString(result, "Quack "+name.GetString()+" 🐥");;
+			return StringVector::AddString(result, "Time_travel "+name.GetString()+" 🐥");;
         });
 }
 
@@ -26,29 +26,29 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-    CreateScalarFunctionInfo quack_fun_info(
-            ScalarFunction("quack", {LogicalType::VARCHAR}, LogicalType::VARCHAR, QuackScalarFun));
-    quack_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, &quack_fun_info);
+    CreateScalarFunctionInfo time_travel_fun_info(
+            ScalarFunction("time_travel", {LogicalType::VARCHAR}, LogicalType::VARCHAR, Time_travelScalarFun));
+    time_travel_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+    catalog.CreateFunction(*con.context, &time_travel_fun_info);
     con.Commit();
 }
 
-void QuackExtension::Load(DuckDB &db) {
+void Time_travelExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
-std::string QuackExtension::Name() {
-	return "quack";
+std::string Time_travelExtension::Name() {
+	return "time_travel";
 }
 
 } // namespace duckdb
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void quack_init(duckdb::DatabaseInstance &db) {
+DUCKDB_EXTENSION_API void time_travel_init(duckdb::DatabaseInstance &db) {
 	LoadInternal(db);
 }
 
-DUCKDB_EXTENSION_API const char *quack_version() {
+DUCKDB_EXTENSION_API const char *time_travel_version() {
 	return duckdb::DuckDB::LibraryVersion();
 }
 }

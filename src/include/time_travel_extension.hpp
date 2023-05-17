@@ -4,7 +4,7 @@
 
 namespace duckdb {
 
-class QuackExtension : public Extension {
+class Time_travelExtension : public Extension {
 public:
 	void Load(DuckDB &db) override;
 	std::string Name() override;
