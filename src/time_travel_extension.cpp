@@ -1,10 +1,12 @@
 #define DUCKDB_EXTENSION_MAIN
+#include <iostream>
 
 #include "time_travel_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/parser/statement/extension_statement.hpp"
 #include "duckdb/parser/parser.hpp"
 
 #include "re2/re2.h"
@@ -13,20 +15,6 @@
 
 namespace duckdb
 {
-
-    template <typename... Args>
-    std::string string_format(const std::string &format, Args... args)
-    {
-        int size_s = std::snprintf(nullptr, 0, format.c_str(), args...) + 1; // Extra space for '\0'
-        if (size_s <= 0)
-        {
-            throw std::runtime_error("Error during formatting.");
-        }
-        auto size = static_cast<size_t>(size_s);
-        std::unique_ptr<char[]> buf(new char[size]);
-        std::snprintf(buf.get(), size, format.c_str(), args...);
-        return std::string(buf.get(), buf.get() + size - 1); // We don't want the '\0' inside
-    }
 
     inline void Time_travelScalarFun(DataChunk &args, ExpressionState &state, Vector &result)
     {
@@ -40,25 +28,62 @@ namespace duckdb
             });
     }
 
-    ParserExtensionParseResult when_parse(ParserExtensionInfo *,
-                                          const std::string &query)
+    ParserExtensionParseResult parse(ParserExtensionInfo *,
+                                     const std::string &query)
     {
-        std::stringstream ss;
-
         string as_of;
-        RE2::FullMatch(query, "WHEN as-of=(\\w+)", &as_of);
+        RE2::PartialMatch(query, "WHEN as-of=\\w+", &as_of);
+        std::cout << "EDWIN " + as_of << "\n";
 
-        string udf_call = string_format("Time_travel('')", as_of);
-        duckdb_re2::StringPiece input(udf_call);
+        string udf_call = "Time_travel('" + as_of + "')";
 
-        RE2::Replace(query, "b+", "d");
+        std::string query_copy(query);
+        RE2::Replace(&query_copy, "WHEN as-of=\\w+", "");
+        RE2::Replace(&query_copy, "Time_travel", udf_call);
+        std::cout << "EDWIN " + udf_call << "\n";
 
         Parser parser;
-        parser.ParseQuery(std::move(result));
+        parser.ParseQuery(std::move(query_copy));
         vector<unique_ptr<SQLStatement>> statements = std::move(parser.statements);
         return ParserExtensionParseResult(
             make_unique_base<ParserExtensionParseData, WhenParseData>(
                 std::move(statements[0])));
+    }
+
+    ParserExtensionPlanResult plan(ParserExtensionInfo *, ClientContext &context,
+                                   unique_ptr<ParserExtensionParseData> parse_data)
+    {
+        auto state = make_shared<QueryState>(std::move(parse_data));
+        context.registered_state["TimeTravel"] = state;
+        throw BinderException("Use psql_bind instead");
+    }
+
+    BoundStatement query_bind(ClientContext &context, Binder &binder,
+                              OperatorExtensionInfo *info, SQLStatement &statement)
+    {
+        switch (statement.type)
+        {
+        case StatementType::EXTENSION_STATEMENT:
+        {
+            auto &extension_statement = dynamic_cast<ExtensionStatement &>(statement);
+            if (extension_statement.extension.parse_function == parse)
+            {
+                auto lookup = context.registered_state.find("TimeTravel");
+                if (lookup != context.registered_state.end())
+                {
+                    auto psql_state = (QueryState *)lookup->second.get();
+                    auto psql_binder = Binder::CreateBinder(context);
+                    auto psql_parse_data =
+                        dynamic_cast<WhenParseData *>(psql_state->parse_data.get());
+                    return psql_binder->Bind(*(psql_parse_data->statement));
+                }
+                throw BinderException("Registered state not found");
+            }
+        }
+        default:
+            // No-op empty
+            return {};
+        }
     }
 
     static void LoadInternal(DatabaseInstance &instance)
@@ -67,6 +92,7 @@ namespace duckdb
         auto &config = DBConfig::GetConfig(instance);
         WhenParserExtension when_parser;
         config.parser_extensions.push_back(when_parser);
+        config.operator_extensions.push_back(make_unique<TimeTravelOperatorExtension>());
 
         // UDF creation
         Connection con(instance);
