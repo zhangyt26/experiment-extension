@@ -16,14 +16,14 @@
 namespace duckdb
 {
 
-    inline void Time_travelScalarFun(DataChunk &args, ExpressionState &state, Vector &result)
+    inline void bpsUDF(DataChunk &args, ExpressionState &state, Vector &result)
     {
         auto &name_vector = args.data[0];
         UnaryExecutor::Execute<string_t, string_t>(
             name_vector, result, args.size(),
             [&](string_t name)
             {
-                return StringVector::AddString(result, "Time_travel " + name.GetString() + " 🐥");
+                return StringVector::AddString(result, "bps " + name.GetString() + " 🐥");
                 ;
             });
     }
@@ -31,15 +31,15 @@ namespace duckdb
     ParserExtensionParseResult parse(ParserExtensionInfo *,
                                      const std::string &query)
     {
-        string as_of;
-        RE2::PartialMatch(query, "WHEN as-of=\\w+", &as_of);
+        long as_of;
+        RE2::PartialMatch(query, "WHEN as-of=(\\d+)?", &as_of);
         std::cout << "EDWIN " + as_of << "\n";
 
-        string udf_call = "Time_travel('" + as_of + "')";
+        string udf_call = "bps('" + std::to_string(as_of) + "')";
 
         std::string query_copy(query);
-        RE2::Replace(&query_copy, "WHEN as-of=\\w+", "");
-        RE2::Replace(&query_copy, "Time_travel", udf_call);
+        RE2::Replace(&query_copy, "WHEN as-of=\\d+", "");
+        RE2::Replace(&query_copy, "bps", udf_call);
         std::cout << "EDWIN " + udf_call << "\n";
 
         Parser parser;
@@ -101,7 +101,7 @@ namespace duckdb
         auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
         CreateScalarFunctionInfo time_travel_fun_info(
-            ScalarFunction("time_travel", {LogicalType::VARCHAR}, LogicalType::VARCHAR, Time_travelScalarFun));
+            ScalarFunction("bps", {LogicalType::VARCHAR}, LogicalType::VARCHAR, bpsUDF));
         time_travel_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
         catalog.CreateFunction(*con.context, &time_travel_fun_info);
         con.Commit();
